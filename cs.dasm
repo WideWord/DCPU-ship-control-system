@@ -1,0 +1,341 @@
+set pc, start
+
+:memcpy; (desc, source, size) -> void
+	set i, 0
+	:memcpy_loop
+	set [a], [b]
+	add i, 1
+	add a, 1
+	add b, 1
+	ifg c, i
+		set pc, memcpy_loop
+	set pc, pop
+	
+:memfill; (ptr, value, size) -> void
+	:memfill_loop
+	set [a], b
+	sub c, 1
+	add a, 1
+	ifg c, 0
+		set pc, memfill_loop
+	set pc, pop
+
+
+:getch; () -> void
+	set a, 0x9010
+	:getch_loop
+	sub a, 1
+	ife a, 0x9000
+		set pc, getch_break
+	ife [a], 0x0000
+		set pc, getch_loop
+	:getch_break
+	set b, [a]
+	ifn [a], 0x0000
+		set [a], 0x0000
+	set a, b
+	set pc, pop
+	
+:strlen; (string) -> length
+	set b, a
+	set a, 0
+	:strlen_loop
+		ife [b], 0
+			set pc, pop
+		add a, 1
+		add b, 1
+		set pc, strlen_loop
+		
+:setcolor; (string, color, size) -> void
+	shl b, 8
+	set i, 0
+	:setcolor_loop
+		and [a], 0x00ff
+		add [a], b
+		add a, 1
+		add i, 1
+		ifg c, i
+			set pc, setcolor_loop
+			
+	set pc, pop
+		
+:setbar_local
+dat 0
+:setbar; (value) -> void , value from 0 to 32
+	add [setbar_local], a
+	set a, 0x8083
+	set b, 0xff00
+	set c, [setbar_local]
+	jsr memfill
+	
+	set pc, pop
+	
+
+:cs_intro 
+dat "   DCPU - 16                    ", "   Ship control system          ", "   version 0.01                 ","   loading...                   ", 0
+:cs_doneloading
+dat "   done.                        ", "                                ", "   press any key                ", 0
+:page_size 
+dat 0x160
+:page_data 
+dat 0x6000
+
+:page 
+dat 0x0000
+
+:page_names
+dat "main","engi","radr","navi","mesg","log ","----","----",0
+:page_main
+dat 0x6000
+:page_eng 
+dat 0x6160
+:page_rad
+dat 0x62c0
+:page_nav
+dat 0x6420
+;empty pages
+dat 0x6580
+dat 0x66e0
+dat 0x6840
+dat 0x69a0
+:draw_page_tabs; () -> void
+	set a, 0x8000
+	set b, page_names
+	set c, 32
+	jsr memcpy
+	set i, 0
+	:draw_page_tabs_loop
+		set x, i
+		div x, 4
+		set a, x
+		;set c, [page]
+		;mod c, 2
+		;add a, c
+		mod a, 2
+		ife a, 0
+			set b, 0x7000
+		ifn a, 0
+			set b, 0xf000
+		ife x, [page]
+			set y, 0x0f00
+		ifn x, [page]
+			set y, b
+		bor [0x8000+i], y	
+		add i, 1
+		ifn i, 32
+			set pc, draw_page_tabs_loop
+	
+	set pc, pop
+	
+:draw_page_data; () -> void
+	set a, 0x8020
+	set b, [page]
+	mul b, [page_size]
+	add b, [page_data]
+	set c, [page_size]
+	jsr memcpy
+	set pc, pop
+
+:msg dat " Hello world! testing pages  iorjtgoitrjgiotrjgotgjttrogijthojhithjeihjutrphiujtyhjriypohijyhiyjhpobtirhjebtutrbhjiotrehtiopgjtehiojtiopjyiohbjoihjtrehiopjyiojriojyoptrjhotienhtejtojibehiteiophjyehjtiterhjtoihjtre", 0
+:start
+	;clear screen
+	set a, 0x8000
+	set b, 0x0000
+	set c, 384
+	jsr memfill
+
+	;setup intro
+	set a, cs_intro
+	jsr strlen
+	set c, a
+	set a, cs_intro
+	set b, 0xf0
+	jsr setcolor 
+	
+	set a, cs_intro
+	jsr strlen
+	set c, a
+	set a, 0x8000
+	set b, cs_intro
+	jsr memcpy 
+	
+	set [0x8082], 0xf05b
+	set [0x8095], 0xf05d
+	
+	;loading.. message
+	
+	set a, 3
+	jsr setbar
+	
+	;clear pages memory
+	set a, [page_data]
+	set b, 0xff00
+	set c, [page_size]
+	mul c, 8
+	jsr memfill
+	
+	set a, 3
+	jsr setbar
+	
+	;set helloworld to main page
+	set a, msg
+	jsr strlen
+	set c, a
+	set a, msg
+	set b, 0x0f
+	jsr setcolor
+	
+	set a, 3
+	jsr setbar
+	
+	set a, msg
+	jsr strlen
+	set c, a
+	set a, [page_main]
+	add a, 64
+	set b, msg	
+	jsr memcpy
+	
+	set a, 3
+	jsr setbar
+	
+	;control system inilization
+	jsr setup_radar_picture
+	jsr engine_setup
+	
+	set a, 3
+	jsr setbar
+	
+	;done message
+	set a, cs_doneloading
+	jsr strlen
+	set c, a
+	set a, cs_doneloading
+	set b, 0xf0
+	jsr setcolor 
+	
+	set a, 3
+	jsr setbar
+	
+	set a, cs_doneloading
+	jsr strlen
+	set c, a
+	set a, 0x80a0
+	set b, cs_doneloading
+	jsr memcpy 
+	
+	;waiting for press any key
+	:s_loop
+	jsr getch
+	ife a, 0
+		set pc, s_loop
+	
+
+	
+	;main loop
+	jsr draw_page_tabs
+	:start_loop
+		jsr update
+		jsr getch
+		ife a, 0
+			set pc, start_loop
+		add [page], 1
+		ife a, 1;left
+			sub [page], 1
+		ife a, 2;right
+			add [page], 1
+		ife [page], 0
+			set [page], 1
+		ife [page], 9
+			set [page], 8
+		sub [page], 1
+		jsr draw_page_tabs
+	set pc, start_loop
+	
+	
+:end
+	sub pc, 1
+:update_counter
+dat 0
+:update
+	add [update_counter], 1
+	ife [update_counter], 0x00ff
+	set [update_counter], 1
+	;update code here
+	jsr radar_update
+	jsr draw_page_data
+	set pc, pop
+
+
+:setup_radar_picture
+	set a, [page_rad]
+	add a, 2
+	set b, 0xf700
+	set c, 22
+	jsr memfill
+	
+	set a, [page_rad]
+	add a, 322
+	set b, 0xf700
+	set c, 22
+	jsr memfill
+	
+	set a, [page_rad]
+	add a, 34
+	set i, 0
+	:setup_radar_picture_loop1
+		set b, a
+		set [b], 0xf700
+		add b, 1
+		set [b], 0xf700
+		add b, 19
+		set [b], 0xf700
+		add b, 1
+		set [b], 0xf700
+		add a, 32
+		add i, 1
+		ifn i, 10
+			set pc, setup_radar_picture_loop1
+	set a, [page_rad]
+	add a, 172
+	set [a], 0xf300
+	set b, a
+	add b, 1
+	set [b], 0xf300
+	set pc, pop
+	
+:radar_clear
+	set pc, pop
+
+:radar_update
+
+	set pc, pop
+
+:fuel_s
+dat "Fuel:", 0
+:engine_setup
+	
+	set a, fuel_s
+	jsr strlen
+	set push, a ;length
+	
+	set c, a
+	set a, fuel_s
+	set b, 0x0f
+	jsr setcolor
+	
+	set a, [page_eng]
+	add a, 33
+	set b, fuel_s
+	set c, pop ;length
+	jsr memcpy
+	
+	set pc, pop
+
+:engine_update
+	set b, [page_eng]
+	add b, 34
+	set a, fuel_s
+	jsr strlen
+	add a, b
+	
